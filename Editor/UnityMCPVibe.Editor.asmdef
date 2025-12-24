@@ -6,7 +6,8 @@
         "GUID:560b04d1a97f54a46a2660c3cc343a6f",
         "Unity.TextMeshPro",
         "UnityEngine.UI",
-        "Unity.Timeline"
+        "Unity.Timeline",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
@@ -16,6 +17,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.inputsystem",
+            "expression": "",
+            "define": "ENABLE_INPUT_SYSTEM"
+        }
+    ],
     "noEngineReferences": false
 }
