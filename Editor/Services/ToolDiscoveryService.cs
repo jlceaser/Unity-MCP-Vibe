@@ -65,7 +65,7 @@ namespace MCPForUnity.Editor.Services
             try
             {
                 // Load the cache from Resources
-                var cache = Resources.Load<MCPToolMetadataCache>("MCPToolMetadataCache");
+                var cache = UnityEngine.Resources.Load<MCPToolMetadataCache>("MCPToolMetadataCache");
                 if (cache == null)
                 {
                     return false;
