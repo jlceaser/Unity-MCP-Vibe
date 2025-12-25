@@ -43,7 +43,6 @@ namespace MCPForUnity.Editor.NativeServer.Core
             GenerateCache();
         }
 
-        [MenuItem("System/Development/Regenerate Tool Cache", false, 103)]
         public static void GenerateCache()
         {
             if (_isGenerating)
