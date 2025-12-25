@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEditor;
 using Newtonsoft.Json.Linq;
 using MCPForUnity.Editor.Helpers;
@@ -201,10 +202,10 @@ namespace MCPForUnity.Editor.Tools
         {
             expr = expr.Trim();
 
-            // Literal values
-            if (expr == "null") return null;
-            if (expr == "true") return true;
-            if (expr == "false") return false;
+            // Literal values (case-insensitive for bool/null)
+            if (expr.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+            if (expr.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
+            if (expr.Equals("false", StringComparison.OrdinalIgnoreCase)) return false;
             if (int.TryParse(expr, out int intVal)) return intVal;
             if (float.TryParse(expr.TrimEnd('f', 'F'), out float floatVal)) return floatVal;
             if (double.TryParse(expr.TrimEnd('d', 'D'), out double doubleVal)) return doubleVal;
@@ -214,6 +215,24 @@ namespace MCPForUnity.Editor.Tools
             if (ExecutionContext.TryGetValue(expr, out object contextVal))
             {
                 return contextVal;
+            }
+
+            // Try ternary operator EARLY: condition ? trueValue : falseValue
+            if (expr.Contains("?") && expr.Contains(":") && !expr.Contains("?."))
+            {
+                if (TryEvaluateTernary(expr, out object ternaryResult))
+                {
+                    return ternaryResult;
+                }
+            }
+
+            // Try null-coalescing operator EARLY: left ?? right
+            if (expr.Contains("??"))
+            {
+                if (TryEvaluateNullCoalescing(expr, out object nullCoalesceResult))
+                {
+                    return nullCoalesceResult;
+                }
             }
 
             // Static property/field access: Type.Member
@@ -293,13 +312,24 @@ namespace MCPForUnity.Editor.Tools
 
         private static object ResolvePropertyChain(string expr)
         {
-            var parts = expr.Split('.');
+            // Handle null-conditional operator ?.
+            bool hasNullConditional = expr.Contains("?.");
+            var parts = hasNullConditional
+                ? Regex.Split(expr, @"(?<!\?)\.|\?\.")
+                : expr.Split('.');
+
             object current = null;
             Type currentType = null;
 
             for (int i = 0; i < parts.Length; i++)
             {
                 string part = parts[i];
+
+                // If using null-conditional and current is null, return null
+                if (hasNullConditional && i > 0 && current == null)
+                {
+                    return null;
+                }
 
                 if (i == 0)
                 {
@@ -467,6 +497,16 @@ namespace MCPForUnity.Editor.Tools
                 { "Selection", typeof(Selection) },
                 { "AssetDatabase", typeof(AssetDatabase) },
                 { "EditorUtility", typeof(EditorUtility) },
+                { "QualitySettings", typeof(QualitySettings) },
+                { "RenderSettings", typeof(RenderSettings) },
+                { "GraphicsSettings", typeof(UnityEngine.Rendering.GraphicsSettings) },
+                { "PlayerSettings", typeof(PlayerSettings) },
+                { "EditorPrefs", typeof(EditorPrefs) },
+                { "PlayerPrefs", typeof(PlayerPrefs) },
+                { "Resources", typeof(UnityEngine.Resources) },
+                { "Material", typeof(Material) },
+                { "Shader", typeof(Shader) },
+                { "Texture2D", typeof(Texture2D) },
             };
 
             if (wellKnown.TryGetValue(typeName, out Type type))
@@ -671,6 +711,131 @@ namespace MCPForUnity.Editor.Tools
             if (result is UnityEngine.Object uobj) return $"[{result.GetType().Name}] {uobj.name}";
             
             return result.ToString();
+        }
+
+        #endregion
+
+        #region Operator Support
+
+        /// <summary>
+        /// Evaluates ternary operator: condition ? trueValue : falseValue
+        /// </summary>
+        private static bool TryEvaluateTernary(string expr, out object result)
+        {
+            result = null;
+
+            // Find the ? operator (not part of ?. or ??)
+            int questionIndex = -1;
+            int depth = 0;
+            bool inString = false;
+
+            for (int i = 0; i < expr.Length; i++)
+            {
+                char c = expr[i];
+                if (c == '"' && (i == 0 || expr[i - 1] != '\\')) inString = !inString;
+                if (inString) continue;
+
+                if (c == '(' || c == '[') depth++;
+                else if (c == ')' || c == ']') depth--;
+                else if (c == '?' && depth == 0)
+                {
+                    // Make sure it's not ?. or ??
+                    if (i + 1 < expr.Length)
+                    {
+                        char next = expr[i + 1];
+                        if (next == '.' || next == '?') continue;
+                    }
+                    questionIndex = i;
+                    break;
+                }
+            }
+
+            if (questionIndex < 0) return false;
+
+            // Find the matching : operator
+            int colonIndex = -1;
+            depth = 0;
+            inString = false;
+
+            for (int i = questionIndex + 1; i < expr.Length; i++)
+            {
+                char c = expr[i];
+                if (c == '"' && (i == 0 || expr[i - 1] != '\\')) inString = !inString;
+                if (inString) continue;
+
+                if (c == '(' || c == '[' || c == '?') depth++;
+                else if (c == ')' || c == ']') depth--;
+                else if (c == ':' && depth == 0)
+                {
+                    colonIndex = i;
+                    break;
+                }
+            }
+
+            if (colonIndex < 0) return false;
+
+            string conditionExpr = expr.Substring(0, questionIndex).Trim();
+            string trueExpr = expr.Substring(questionIndex + 1, colonIndex - questionIndex - 1).Trim();
+            string falseExpr = expr.Substring(colonIndex + 1).Trim();
+
+            try
+            {
+                object conditionResult = EvaluateSimpleExpression(conditionExpr);
+                bool condition = conditionResult is bool b ? b : conditionResult != null;
+
+                result = condition
+                    ? EvaluateSimpleExpression(trueExpr)
+                    : EvaluateSimpleExpression(falseExpr);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Evaluates null-coalescing operator: left ?? right
+        /// </summary>
+        private static bool TryEvaluateNullCoalescing(string expr, out object result)
+        {
+            result = null;
+
+            // Find ?? operator
+            int index = -1;
+            int depth = 0;
+            bool inString = false;
+
+            for (int i = 0; i < expr.Length - 1; i++)
+            {
+                char c = expr[i];
+                if (c == '"' && (i == 0 || expr[i - 1] != '\\')) inString = !inString;
+                if (inString) continue;
+
+                if (c == '(' || c == '[') depth++;
+                else if (c == ')' || c == ']') depth--;
+                else if (c == '?' && expr[i + 1] == '?' && depth == 0)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index < 0) return false;
+
+            string leftExpr = expr.Substring(0, index).Trim();
+            string rightExpr = expr.Substring(index + 2).Trim();
+
+            try
+            {
+                object leftResult = EvaluateSimpleExpression(leftExpr);
+                result = leftResult ?? EvaluateSimpleExpression(rightExpr);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         #endregion
