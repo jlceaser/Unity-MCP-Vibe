@@ -1,0 +1,23 @@
+# Unity meta files
+*.meta
+
+# IDE
+.idea/
+.vs/
+*.csproj
+*.sln
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.log
+*.bak
+
+# Build
+[Bb]uild/
+[Ll]ibrary/
+[Tt]emp/

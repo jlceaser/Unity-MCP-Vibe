@@ -53,31 +53,58 @@ namespace MCPForUnity.Editor.NativeServer.Core
         private readonly ConcurrentQueue<double> _recentResponseTimes = new ConcurrentQueue<double>();
         private const int MaxRecentResponses = 100;
 
+        // Thread-safe cached values for EditorPrefs (to avoid main thread requirement)
+        private static bool _cachedAutoStart = false;
+        private static bool _cachedAutoRestart = true;
+        private static int _cachedMaxRestartAttempts = 5;
+        private static int _cachedRestartCooldownSeconds = 60;
+        private static bool _cachedWasRunningBeforeReload = false;
+        private static bool _cacheInitialized = false;
+
+        // Initialize cache on main thread
+        private static void EnsureCacheInitialized()
+        {
+            if (_cacheInitialized) return;
+            try
+            {
+                _cachedAutoStart = EditorPrefs.GetBool("MCP_Native_AutoStart", false);
+                _cachedAutoRestart = EditorPrefs.GetBool("MCP_Native_AutoRestart", true);
+                _cachedMaxRestartAttempts = EditorPrefs.GetInt("MCP_Native_MaxRestarts", 5);
+                _cachedRestartCooldownSeconds = EditorPrefs.GetInt("MCP_Native_RestartCooldown", 60);
+                _cachedWasRunningBeforeReload = EditorPrefs.GetBool("MCP_Native_WasRunning", false);
+                _cacheInitialized = true;
+            }
+            catch
+            {
+                // Not on main thread, use defaults
+            }
+        }
+
         // Configuration
         public int Port { get; private set; } = 8080;
 
         public static bool AutoStart
         {
-            get => EditorPrefs.GetBool("MCP_Native_AutoStart", false);
-            set => EditorPrefs.SetBool("MCP_Native_AutoStart", value);
+            get { EnsureCacheInitialized(); return _cachedAutoStart; }
+            set { _cachedAutoStart = value; try { EditorPrefs.SetBool("MCP_Native_AutoStart", value); } catch { } }
         }
 
         public static bool AutoRestart
         {
-            get => EditorPrefs.GetBool("MCP_Native_AutoRestart", true);
-            set => EditorPrefs.SetBool("MCP_Native_AutoRestart", value);
+            get { EnsureCacheInitialized(); return _cachedAutoRestart; }
+            set { _cachedAutoRestart = value; try { EditorPrefs.SetBool("MCP_Native_AutoRestart", value); } catch { } }
         }
 
         public static int MaxRestartAttempts
         {
-            get => EditorPrefs.GetInt("MCP_Native_MaxRestarts", 5);
-            set => EditorPrefs.SetInt("MCP_Native_MaxRestarts", value);
+            get { EnsureCacheInitialized(); return _cachedMaxRestartAttempts; }
+            set { _cachedMaxRestartAttempts = value; try { EditorPrefs.SetInt("MCP_Native_MaxRestarts", value); } catch { } }
         }
 
         public static int RestartCooldownSeconds
         {
-            get => EditorPrefs.GetInt("MCP_Native_RestartCooldown", 60);
-            set => EditorPrefs.SetInt("MCP_Native_RestartCooldown", value);
+            get { EnsureCacheInitialized(); return _cachedRestartCooldownSeconds; }
+            set { _cachedRestartCooldownSeconds = value; try { EditorPrefs.SetInt("MCP_Native_RestartCooldown", value); } catch { } }
         }
 
         // State
@@ -96,8 +123,8 @@ namespace MCPForUnity.Editor.NativeServer.Core
         // Persistent flag to track if server was running before domain reload
         private static bool WasRunningBeforeReload
         {
-            get => EditorPrefs.GetBool("MCP_Native_WasRunning", false);
-            set => EditorPrefs.SetBool("MCP_Native_WasRunning", value);
+            get { EnsureCacheInitialized(); return _cachedWasRunningBeforeReload; }
+            set { _cachedWasRunningBeforeReload = value; try { EditorPrefs.SetBool("MCP_Native_WasRunning", value); } catch { } }
         }
 
         static MCPNativeServer()
