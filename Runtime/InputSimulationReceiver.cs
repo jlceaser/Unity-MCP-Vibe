@@ -1,15 +1,18 @@
-using System;
-using System.Collections.Generic;
-using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.InputSystem.Controls;
+#endif
+using System;
+using System.Collections.Generic;
+using UnityEngine;
 
 namespace Endurance.Runtime
 {
     /// <summary>
     /// Receives simulated input from MCP and feeds it to Unity's Input System.
     /// Add this to a GameObject in your scene to enable input simulation during Play Mode.
+    /// Note: Full Input System integration requires the Input System package.
     /// </summary>
     public class InputSimulationReceiver : MonoBehaviour
     {
@@ -24,10 +27,12 @@ namespace Endurance.Runtime
         private Vector2 simulatedMousePosition;
         private Dictionary<int, bool> simulatedMouseButtons = new Dictionary<int, bool>();
 
+#if ENABLE_INPUT_SYSTEM
         // Input System devices
         private Keyboard virtualKeyboard;
         private Mouse virtualMouse;
         private Gamepad virtualGamepad;
+#endif
 
         private void Awake()
         {
@@ -44,13 +49,18 @@ namespace Endurance.Runtime
 
         private void InitializeVirtualDevices()
         {
+#if ENABLE_INPUT_SYSTEM
             // Use existing devices or create virtual ones
             virtualKeyboard = Keyboard.current;
             virtualMouse = Mouse.current;
             virtualGamepad = Gamepad.current;
 
             if (logInputs)
-                Debug.Log("[InputSimulationReceiver] Initialized - ready to receive simulated input");
+                Debug.Log("[InputSimulationReceiver] Initialized with Input System support");
+#else
+            if (logInputs)
+                Debug.Log("[InputSimulationReceiver] Initialized (Legacy Input only - Input System not available)");
+#endif
         }
 
         private void OnDestroy()
@@ -71,8 +81,9 @@ namespace Endurance.Runtime
             if (logInputs)
                 Debug.Log($"[InputSimulation] Key Down: {keyCode}");
 
-            // Try to trigger Input System
+#if ENABLE_INPUT_SYSTEM
             TriggerKeyboardEvent(keyCode, true);
+#endif
         }
 
         /// <summary>
@@ -85,7 +96,9 @@ namespace Endurance.Runtime
             if (logInputs)
                 Debug.Log($"[InputSimulation] Key Up: {keyCode}");
 
+#if ENABLE_INPUT_SYSTEM
             TriggerKeyboardEvent(keyCode, false);
+#endif
         }
 
         /// <summary>
@@ -102,7 +115,9 @@ namespace Endurance.Runtime
                 if (logInputs)
                     Debug.Log($"[InputSimulation] Axis: {axisName} = {value}");
 
+#if ENABLE_INPUT_SYSTEM
                 TriggerAxisEvent(axisName, value);
+#endif
             }
         }
 
@@ -169,6 +184,7 @@ namespace Endurance.Runtime
 
         #endregion
 
+#if ENABLE_INPUT_SYSTEM
         #region Input System Integration
 
         private void TriggerKeyboardEvent(KeyCode keyCode, bool pressed)
@@ -230,12 +246,6 @@ namespace Endurance.Runtime
                 if (logInputs)
                     Debug.LogWarning($"[InputSimulation] Failed to trigger axis event: {e.Message}");
             }
-        }
-
-        private System.Collections.IEnumerator ReleaseMouseButtonNextFrame(int button)
-        {
-            yield return null;
-            simulatedMouseButtons[button] = false;
         }
 
         private Key? KeyCodeToKey(KeyCode keyCode)
@@ -323,6 +333,13 @@ namespace Endurance.Runtime
         }
 
         #endregion
+#endif
+
+        private System.Collections.IEnumerator ReleaseMouseButtonNextFrame(int button)
+        {
+            yield return null;
+            simulatedMouseButtons[button] = false;
+        }
 
         #region Legacy Input Compatibility
 
