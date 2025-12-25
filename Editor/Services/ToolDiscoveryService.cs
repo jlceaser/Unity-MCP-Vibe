@@ -14,7 +14,22 @@ namespace MCPForUnity.Editor.Services
     {
         private Dictionary<string, ToolMetadata> _cachedTools;
         private readonly Dictionary<Type, string> _scriptPathCache = new();
-    private readonly Dictionary<string, string> _summaryCache = new();
+        private readonly Dictionary<string, string> _summaryCache = new();
+
+        // Compiled regex patterns for better performance (created once, reused)
+        private static readonly Regex GenericSummaryRegex = new Regex(
+            @"///\s*<summary>\s*(?<content>[\s\S]*?)\s*</summary>",
+            RegexOptions.Compiled);
+        private static readonly Regex XmlCommentPrefixRegex = new Regex(
+            @"^\s*///\s?",
+            RegexOptions.Compiled | RegexOptions.Multiline);
+        private static readonly Regex XmlTagsRegex = new Regex(
+            @"<[^>]+>",
+            RegexOptions.Compiled);
+        private static readonly Regex WhitespaceRegex = new Regex(
+            @"\s+",
+            RegexOptions.Compiled);
+        private static readonly Dictionary<string, Regex> _classPatternCache = new();
 
         public List<ToolMetadata> DiscoverAllTools()
         {
@@ -375,12 +390,19 @@ namespace MCPForUnity.Editor.Services
                     return null;
                 }
 
-                string classPattern = $@"///\s*<summary>\s*(?<content>[\s\S]*?)\s*</summary>\s*(?:\[[^\]]*\]\s*)*(?:public\s+)?(?:static\s+)?class\s+{Regex.Escape(type.Name)}";
-                var match = Regex.Match(scriptText, classPattern);
+                // Use cached compiled regex for class-specific pattern
+                if (!_classPatternCache.TryGetValue(type.Name, out var classRegex))
+                {
+                    string classPattern = $@"///\s*<summary>\s*(?<content>[\s\S]*?)\s*</summary>\s*(?:\[[^\]]*\]\s*)*(?:public\s+)?(?:static\s+)?class\s+{Regex.Escape(type.Name)}";
+                    classRegex = new Regex(classPattern, RegexOptions.Compiled);
+                    _classPatternCache[type.Name] = classRegex;
+                }
+
+                var match = classRegex.Match(scriptText);
 
                 if (!match.Success)
                 {
-                    match = Regex.Match(scriptText, @"///\s*<summary>\s*(?<content>[\s\S]*?)\s*</summary>");
+                    match = GenericSummaryRegex.Match(scriptText);
                 }
 
                 if (!match.Success)
@@ -390,9 +412,9 @@ namespace MCPForUnity.Editor.Services
                 }
 
                 summary = match.Groups["content"].Value;
-                summary = Regex.Replace(summary, @"^\s*///\s?", string.Empty, RegexOptions.Multiline);
-                summary = Regex.Replace(summary, @"<[^>]+>", string.Empty);
-                summary = Regex.Replace(summary, @"\s+", " ").Trim();
+                summary = XmlCommentPrefixRegex.Replace(summary, string.Empty);
+                summary = XmlTagsRegex.Replace(summary, string.Empty);
+                summary = WhitespaceRegex.Replace(summary, " ").Trim();
             }
             catch (System.Exception ex)
             {

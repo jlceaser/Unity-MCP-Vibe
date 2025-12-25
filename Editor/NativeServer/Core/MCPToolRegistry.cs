@@ -348,11 +348,13 @@ namespace MCPForUnity.Editor.NativeServer.Core
             UnityEditor.EditorApplication.delayCall += () => { };
         }
 
+        private const int MaxItemsPerFrame = 50; // Increased from 10 for better throughput
+
         private static void ProcessMainThreadQueue()
         {
-            // Process all queued actions
+            // Process queued actions with configurable limit
             int processed = 0;
-            while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
+            while (_mainThreadQueue.TryDequeue(out var action) && processed < MaxItemsPerFrame)
             {
                 try
                 {
@@ -439,11 +441,47 @@ namespace MCPForUnity.Editor.NativeServer.Core
                 };
             }
 
-            // Check for our standard response types
+            // FAST PATH: Direct type checks for known response types (no reflection)
+            if (result is MCPForUnity.Editor.Helpers.SuccessResponse successResp)
+            {
+                return new MCPToolResult
+                {
+                    IsError = false,
+                    Content = new List<MCPContent> { MCPContent.JsonContent(result) }
+                };
+            }
+
+            if (result is MCPForUnity.Editor.Helpers.ErrorResponse errorResp)
+            {
+                return new MCPToolResult
+                {
+                    IsError = true,
+                    Content = new List<MCPContent> { MCPContent.JsonContent(result) }
+                };
+            }
+
+            if (result is MCPForUnity.Editor.Helpers.PendingResponse)
+            {
+                return new MCPToolResult
+                {
+                    IsError = false,
+                    Content = new List<MCPContent> { MCPContent.JsonContent(result) }
+                };
+            }
+
+            // Check IMcpResponse interface (still fast, no property reflection)
+            if (result is MCPForUnity.Editor.Helpers.IMcpResponse mcpResponse)
+            {
+                return new MCPToolResult
+                {
+                    IsError = !mcpResponse.Success,
+                    Content = new List<MCPContent> { MCPContent.JsonContent(result) }
+                };
+            }
+
+            // SLOW PATH: Fallback to reflection for unknown types
             var resultType = result.GetType();
             var successProp = resultType.GetProperty("success") ?? resultType.GetProperty("Success");
-            var messageProp = resultType.GetProperty("message") ?? resultType.GetProperty("Message");
-            var dataProp = resultType.GetProperty("data") ?? resultType.GetProperty("Data");
             var errorProp = resultType.GetProperty("error") ?? resultType.GetProperty("Error");
 
             bool isError = false;

@@ -771,13 +771,21 @@ For more info, read resource: unity://mcp-help
 
         private async Task<JsonRpcResponse> HandleToolsCall(JsonRpcRequest request)
         {
-            var callParams = request.Params?.ToObject<MCPToolCallParams>();
-            if (callParams == null || string.IsNullOrEmpty(callParams.Name))
+            // Direct JToken access - avoids ToObject<T>() allocation
+            var paramsToken = request.Params;
+            if (paramsToken == null || paramsToken.Type == JTokenType.Null)
+            {
+                return JsonRpcResponse.Failure(request.Id, JsonRpcError.InvalidParams, "Missing tool parameters");
+            }
+
+            string toolName = paramsToken["name"]?.Value<string>();
+            if (string.IsNullOrEmpty(toolName))
             {
                 return JsonRpcResponse.Failure(request.Id, JsonRpcError.InvalidParams, "Missing tool name");
             }
 
-            var result = await _toolRegistry.ExecuteTool(callParams.Name, callParams.Arguments ?? new JObject());
+            var arguments = paramsToken["arguments"] as JObject ?? new JObject();
+            var result = await _toolRegistry.ExecuteTool(toolName, arguments);
             return JsonRpcResponse.Success(request.Id, result);
         }
 
