@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using MCPForUnity.Editor.NativeServer.Protocol;
 
 namespace MCPForUnity.Editor.NativeServer.Core
 {
